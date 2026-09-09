@@ -12,19 +12,19 @@ const seed = async () => {
 
     // Remove existing sample accounts that we will re-create (be careful in prod!)
     const emails = [
-      'admin@example.com',
+      'bigtaxi@tirupur.com',
       // some user-panel users
-      'admin1@example.com',
+      'bigtaxi1@tirupur.com',
       
     ];
 
     await User.deleteMany({ email: { $in: emails } });
 
     const plain = [
-      { name: 'Admin One', email: 'admin@example.com', role: 'admin', password: 'admin123' },
+      { name: 'Admin One', email: 'bigtaxi@tirupur.com', role: 'admin', password: '123tripur' },
 
       // user-panel users
-      { name: 'Alice User', email: 'admin1@example.com', role: 'user', password: 'admin123' },
+      { name: 'Alice User', email: 'bigtaxi1@tirupur.com', role: 'user', password: '123tripur' },
 
     ];
 

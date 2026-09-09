@@ -369,6 +369,75 @@ const improveContent = async (content) => {
   }
 };
 
+// Used by the AI chat box: applies a free-text instruction (e.g. "make the
+// intro shorter", "add a section about pricing") to the blog's existing HTML
+// content and returns the full updated HTML.
+const reviseContentWithInstruction = async (content, instruction) => {
+  try {
+    const prompt = `
+      You are editing the HTML content of a blog post inside a rich text editor.
+      Apply the following instruction to the content below and return the FULL
+      updated HTML content, not just the changed part.
+
+      Instruction: "${instruction}"
+
+      Current content (HTML):
+      """
+      ${content}
+      """
+
+      Rules:
+      - Keep the result valid HTML using the same kinds of tags already present
+        (e.g. <p>, <h2>, <ul>, <li>, <table>, <figure>, <img>).
+      - Preserve existing <figure>/<img> blocks unless the instruction asks you
+        to remove, replace, or move them.
+      - Only change what the instruction asks for; keep everything else intact.
+      - Return ONLY the HTML content — no markdown fences, no commentary, no
+        explanations before or after it.
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text().trim();
+  } catch (error) {
+    console.error('Error revising content with instruction:', error);
+    throw error;
+  }
+};
+
+// Generates an outline via generateOutline() and then fills in up to 2
+// suggested in-content images. Shared by the "Generate Outline with AI"
+// button and the AI chat box (when the chat is used to draft a fresh post).
+const generateOutlineWithImages = async (topic, category) => {
+  const outline = await generateOutline(topic, category);
+
+  const imageSections = (outline.sections || [])
+    .map((section, index) => ({ section, index }))
+    .filter(({ section }) => section?.image?.suggestion)
+    .slice(0, 2);
+
+  if (imageSections.length > 0) {
+    const results = await Promise.allSettled(
+      imageSections.map(({ section }) =>
+        generateBlogImage(section.image.suggestion, '', 'flux', 'featured')
+      )
+    );
+
+    results.forEach((result, i) => {
+      const { index } = imageSections[i];
+      if (result.status === 'fulfilled') {
+        outline.sections[index].image.dataUrl =
+          `data:${result.value.mimeType};base64,${result.value.data}`;
+      } else {
+        console.error('In-content image generation failed for section', index, result.reason);
+        delete outline.sections[index].image;
+      }
+    });
+  }
+
+  return outline;
+};
+
 const generateOutline = async (topic, category) => {
   try {
     const prompt = `
@@ -627,31 +696,7 @@ export const aiGenerateOutline = async (req, res) => {
       });
     }
     
-    const outline = await generateOutline(topic, category);
-
-    const imageSections = (outline.sections || [])
-      .map((section, index) => ({ section, index }))
-      .filter(({ section }) => section?.image?.suggestion)
-      .slice(0, 2);
-
-    if (imageSections.length > 0) {
-      const results = await Promise.allSettled(
-        imageSections.map(({ section }) =>
-          generateBlogImage(section.image.suggestion, '', 'flux', 'featured')
-        )
-      );
-
-      results.forEach((result, i) => {
-        const { index } = imageSections[i];
-        if (result.status === 'fulfilled') {
-          outline.sections[index].image.dataUrl =
-            `data:${result.value.mimeType};base64,${result.value.data}`;
-        } else {
-          console.error('In-content image generation failed for section', index, result.reason);
-          delete outline.sections[index].image;
-        }
-      });
-    }
+    const outline = await generateOutlineWithImages(topic, category);
     
     res.json({
       success: true,
@@ -662,6 +707,47 @@ export const aiGenerateOutline = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to generate outline'
+    });
+  }
+};
+
+// ============ AI CHAT BOX ============
+// One endpoint powers the chat box on the Add/Edit blog screens:
+//  - If the blog has no content yet, the chat message is treated as the
+//    topic/prompt and a brand new outline is generated (mode: "generate").
+//  - If content already exists, the chat message is treated as an
+//    instruction to revise the existing content (mode: "revise").
+export const aiChatEdit = async (req, res) => {
+  try {
+    const { prompt, content, category } = req.body;
+
+    if (!prompt || !prompt.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Prompt is required'
+      });
+    }
+
+    if (!content || !content.trim()) {
+      const outline = await generateOutlineWithImages(prompt, category);
+
+      return res.json({
+        success: true,
+        data: { mode: 'generate', outline }
+      });
+    }
+
+    const revisedContent = await reviseContentWithInstruction(content, prompt);
+
+    return res.json({
+      success: true,
+      data: { mode: 'revise', content: revisedContent }
+    });
+  } catch (error) {
+    console.error('AI chat edit error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to process AI chat request'
     });
   }
 };

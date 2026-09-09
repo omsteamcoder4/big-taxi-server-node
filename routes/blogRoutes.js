@@ -19,7 +19,8 @@ import {
   aiGenerateOutline,
   aiGenerateImage,
   aiGenerateOGImage,
-  aiGenerateAllImages
+  aiGenerateAllImages,
+  aiChatEdit
 } from '../controller/blogController.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js';
@@ -44,6 +45,7 @@ router.post('/ai/generate-outline', protect, authorize('admin', 'author'), aiGen
 router.post('/ai/generate-image', protect, authorize('admin', 'author'), aiGenerateImage);
 router.post('/ai/generate-og-image', protect, authorize('admin', 'author'), aiGenerateOGImage);
 router.post('/ai/generate-all-images', protect, authorize('admin', 'author'), aiGenerateAllImages);
+router.post('/ai/chat', protect, authorize('admin', 'author'), aiChatEdit);
 
 // ============ DYNAMIC ROUTES (must be LAST) ============
 // This route must be AFTER all specific routes like /ai/*
