@@ -234,7 +234,7 @@ export const initDB = async () => {
 // ============================================
 const startCronJob = () => {
   // Run the cron job every minute to check for scheduled blogs
-  cron.schedule('* * * * *', async () => {
+  cron.schedule('0 * * * *', async () => {
     try {
       await checkScheduledBlogs();
     } catch (error) {

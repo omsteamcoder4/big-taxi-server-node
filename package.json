@@ -5,6 +5,8 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
+    "backup": "node scripts/autoBackupChecker.js",
+    "migrate:r2": "node scripts/migrateToR2.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -19,6 +21,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1125.0",
     "@google/genai": "^2.21.0",
     "@google/generative-ai": "^0.24.1",
+    "adm-zip": "^0.6.0",
     "axios": "^1.20.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
