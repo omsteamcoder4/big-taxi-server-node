@@ -2,18 +2,17 @@
 export const generateRobotsTxt = async (req, res) => {
   try {
     console.log('✅ robots.txt requested');
-    
-    // ✅ Use backend URL (where the request is coming from)
+
     const protocol = req.protocol;
     const host = req.get('host');
-    const backendUrl = `${protocol}://${host}`; // This will be http://localhost:5004
-    
+    const backendUrl = `${protocol}://${host}`;
+
     const isProduction = process.env.NODE_ENV === 'production';
-    
+
     console.log(`📍 Generating robots.txt for backend URL: ${backendUrl}`);
-    
+
     let robotsTxt = '';
-    
+
     if (!isProduction) {
       robotsTxt = `# robots.txt for Development Environment
 # Served from: ${backendUrl}
@@ -40,6 +39,9 @@ Host: ${backendUrl.replace(/^https?:\/\//, '')}`;
 
 User-agent: *
 Allow: /
+
+# Allow public SEO endpoints (used by frontend + social preview bots)
+Allow: /api/seo/page/*
 
 # Disallow sensitive/admin areas
 Disallow: /admin/
@@ -76,18 +78,16 @@ Crawl-delay: 1
 User-agent: Googlebot-Mobile
 Allow: /`;
     }
-    
+
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    
+
     console.log(`✅ robots.txt generated for ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
-    console.log(`📍 Sitemap URL: ${backendUrl}/sitemap.xml`);
-    console.log(`📍 robots.txt URL: ${backendUrl}/robots.txt`);
     res.send(robotsTxt);
-    
+
   } catch (error) {
     console.error('❌ Error generating robots.txt:', error);
-    
+
     const protocol = req.protocol;
     const host = req.get('host');
     const backendUrl = `${protocol}://${host}`;
@@ -96,7 +96,7 @@ User-agent: *
 Allow: /
 
 Sitemap: ${backendUrl}/sitemap.xml`;
-    
+
     res.setHeader('Content-Type', 'text/plain');
     res.status(200).send(fallbackRobots);
   }
@@ -108,7 +108,7 @@ export const getRobotsStatus = async (req, res) => {
     const protocol = req.protocol;
     const host = req.get('host');
     const backendUrl = `${protocol}://${host}`;
-    
+
     res.json({
       success: true,
       environment: process.env.NODE_ENV || 'development',

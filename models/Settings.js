@@ -7,7 +7,7 @@ const settingsSchema = new mongoose.Schema({
   phone: { type: String, default: '8248329031' },
   phoneSecondary: { type: String, default: '8270583705' },
   whatsapp: { type: String, default: '919944665375' },
-  email: { type: String, default: 'info@jaitaxisalem.com' },
+  email: { type: String, default: 'info@bigtaxitirupur.com' },
   mapEmbedUrl: { type: String, default: 'https://www.google.com/maps/embed?pb=...' },
   
   // ADD THIS - Simple locations array

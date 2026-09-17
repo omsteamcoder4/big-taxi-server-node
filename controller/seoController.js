@@ -94,23 +94,12 @@ const processAndSaveOgImage = async (fileBuffer, oldImagePath = null) => {
     console.log(`🖼️ Processing OG image...`);
     console.log(`📏 Original buffer size: ${(fileBuffer.length / 1024).toFixed(2)}KB`);
 
-    // Process image with Sharp
-    let quality = 80;
-    let buffer = await sharp(fileBuffer)
+    // Process image with Sharp - single pass, fail-fast
+    const quality = 75;
+    const buffer = await sharp(fileBuffer)
       .resize(1200, 630, { fit: 'cover', withoutEnlargement: true })
       .webp({ quality, effort: 6 })
       .toBuffer();
-
-    let attempts = 0;
-    while (buffer.length / 1024 > 40 && quality > 20 && attempts < 5) {
-      quality -= 10;
-      buffer = await sharp(fileBuffer)
-        .resize(1200, 630, { fit: 'cover', withoutEnlargement: true })
-        .webp({ quality, effort: 6 })
-        .toBuffer();
-      attempts++;
-      console.log(`🔄 Attempt ${attempts}: Quality ${quality}%, Size: ${(buffer.length / 1024).toFixed(2)}KB`);
-    }
 
     // Generate unique filename
     const filename = `og_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.webp`;
@@ -212,7 +201,8 @@ const generateOGImageWithPollination = async (pageType, businessName, model = 'f
 
 // ============ AI HELPER FUNCTIONS ============
 
-const callGeminiWithRetry = async (prompt, retries = 2, delay = 4000) => {
+// Fail-fast: single attempt, no retry loop
+const callGeminiWithRetry = async (prompt) => {
   try {
     console.log(`🤖 Sending request to Gemini (${GEMINI_MODEL})...`);
     const response = await ai.models.generateContent({
@@ -225,12 +215,7 @@ const callGeminiWithRetry = async (prompt, retries = 2, delay = 4000) => {
     console.log(`✅ Gemini request successful`);
     return response;
   } catch (error) {
-    if (error.status === 429 && retries > 0) {
-      console.log(`⏳ Quota exceeded. Retrying in ${delay/1000}s... (${retries} retries left)`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return callGeminiWithRetry(prompt, retries - 1, delay * 1.5);
-    }
-    console.error('❌ Gemini API error:', error);
+    console.error('❌ Gemini API error:', error.message);
     throw error;
   }
 };
@@ -517,30 +502,11 @@ export const aiGenerateImage = async (req, res) => {
     });
   } catch (error) {
     console.error('Image generation error:', error);
-    
-    try {
-      const { pageType, businessName } = req.body;
-      console.log('🔄 Attempting fallback generation with turbo model...');
-      
-      const fallbackImage = await generateOGImageWithPollination(pageType, businessName, 'turbo');
-      
-      return res.json({
-        success: true,
-        data: {
-          ogImage: fallbackImage.savedPath,
-          data: fallbackImage.data,
-          mimeType: fallbackImage.mimeType,
-          note: 'Generated with fallback model (turbo)'
-        }
-      });
-    } catch (fallbackError) {
-      console.error('Fallback generation also failed:', fallbackError);
-      
-      res.status(500).json({
-        success: false,
-        message: 'Failed to generate image: ' + error.message
-      });
-    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate image: ' + error.message
+    });
   }
 };
 
@@ -557,15 +523,11 @@ export const aiGenerateAll = async (req, res) => {
     
     console.log('🚀 Generating all SEO data for:', pageType);
     
-    const [seoMeta, localSEO, scripts, image] = await Promise.all([
-      generateSEOMetaForPage(pageType, pageIdentifier, businessName, businessAddress),
-      generateLocalSEOData(businessName, businessAddress, businessPhone, businessEmail),
-      generateScriptsForPage(pageType, businessName, businessAddress),
-      generateOGImageWithPollination(pageType, businessName).catch(() => {
-        console.log('⚠️ Image generation failed, using fallback model...');
-        return generateOGImageWithPollination(pageType, businessName, 'turbo');
-      })
-    ]);
+    // Fail-fast: sequential generation, no fallback retry
+    const seoMeta = await generateSEOMetaForPage(pageType, pageIdentifier, businessName, businessAddress);
+    const localSEO = await generateLocalSEOData(businessName, businessAddress, businessPhone, businessEmail);
+    const scripts = await generateScriptsForPage(pageType, businessName, businessAddress);
+    const image = await generateOGImageWithPollination(pageType, businessName);
     
     const mergedData = {
       ...seoMeta,

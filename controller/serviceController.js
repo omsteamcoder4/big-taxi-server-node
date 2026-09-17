@@ -61,21 +61,13 @@ const processImage = async (tempFilePath, oldImageUrl = null) => {
   }
 };
 
-// Optimize a single image from buffer
+// Optimize a single image from buffer - single pass, fail-fast
 const optimizeImageToWebP = async (inputBuffer, width = 400, height = 400) => {
-  let quality = 80;
-  let buffer = await sharp(inputBuffer)
+  const quality = 75;
+  const buffer = await sharp(inputBuffer)
     .resize(width, height, { fit: 'contain', withoutEnlargement: true })
     .webp({ quality, effort: 6 })
     .toBuffer();
-
-  while (buffer.length / 1024 > 40 && quality > 20) {
-    quality -= 10;
-    buffer = await sharp(inputBuffer)
-      .resize(width, height, { fit: 'contain', withoutEnlargement: true })
-      .webp({ quality, effort: 6 })
-      .toBuffer();
-  }
 
   return { buffer, quality, sizeKB: (buffer.length / 1024).toFixed(1) };
 };
@@ -333,28 +325,11 @@ export const aiGenerateServiceImage = async (req, res) => {
 
   } catch (error) {
     console.error('Service image generation error:', error);
-    
-    try {
-      const { title } = req.body;
-      console.log('🔄 Attempting fallback generation with turbo model...');
-      
-      const fallbackImage = await generateServiceImage(title, '', 'turbo', 'square');
-      
-      return res.json({
-        success: true,
-        data: {
-          ...fallbackImage,
-          note: 'Generated with fallback model (turbo)'
-        }
-      });
-    } catch (fallbackError) {
-      console.error('Fallback generation also failed:', fallbackError);
-      
-      res.status(500).json({
-        success: false,
-        message: 'Failed to generate image: ' + error.message
-      });
-    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate image: ' + error.message
+    });
   }
 };
 

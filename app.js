@@ -28,6 +28,7 @@ import adminSEORoutes from './routes/adminSEORoutes.js';
 import fleetRoutes from './routes/fleetRoutes.js';
 import geoRoutes from './routes/geoRoutes.js';
 import aeoRoutes from './routes/aeoRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
 import cron from 'node-cron';
 import { checkScheduledBlogs } from './cron/checkScheduledBlogs.js';
 
@@ -40,6 +41,9 @@ dotenv.config({
 });
 
 const app = express();
+
+// Trust first proxy (Nginx) so req.protocol returns https in production
+app.set('trust proxy', 1);
 
 // ============================================
 // CORS Configuration
@@ -113,33 +117,61 @@ app.use(
 // ============================================
 // Static Files - For backward compatibility
 // ============================================
-// Keep this for any local uploads that might still exist
 app.use(
   '/uploads',
   express.static(path.join(__dirname, 'uploads'))
 );
 
 // ============================================
-// Response Middleware to handle R2 URLs
+// Database Connection
 // ============================================
-app.use((req, res, next) => {
-  // Store original json and send methods
-  const originalJson = res.json;
-  const originalSend = res.send;
-  
-  // Override json method
-  res.json = function(data) {
-    // If data has image URLs that are local paths, keep them as is
-    // R2 URLs are already full URLs, so we don't need to modify them
-    // This middleware is mainly for backward compatibility
-    return originalJson.call(this, data);
-  };
-  
-  // Override send method for non-JSON responses
-  res.send = function(data) {
-    return originalSend.call(this, data);
-  };
-  
+const MONGO_URI = process.env.MONGO_URI;
+
+// Set global JWT_SECRET
+global.JWT_SECRET = process.env.JWT_SECRET;
+
+// Validate MongoDB URI
+if (!MONGO_URI) {
+  console.error('❌ MONGO_URI is missing');
+  process.exit(1);
+}
+
+if (!/^mongodb(\+srv)?:\/\//.test(MONGO_URI)) {
+  console.error('❌ Invalid MONGO_URI format');
+  process.exit(1);
+}
+
+// Validate R2 Configuration (warn but don't exit)
+if (!process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID ||
+    !process.env.R2_SECRET_ACCESS_KEY || !process.env.R2_BUCKET_NAME) {
+  console.warn('⚠️  R2 configuration is incomplete. Images will be saved locally.');
+} else {
+  console.log('✅ Cloudflare R2 configured successfully');
+}
+
+// ============================================
+// Umami Analytics Configuration Check (warn only)
+// ============================================
+if (process.env.UMAMI_ENABLED === 'true') {
+  if (!process.env.UMAMI_HOST || !process.env.UMAMI_WEBSITE_ID) {
+    console.warn('⚠️  Umami Analytics is ENABLED but config is incomplete.');
+  }
+}
+
+// Track DB connection state
+let dbConnected = false;
+
+// ============================================
+// DB Connection Guard Middleware
+// ============================================
+app.use('/api', (req, res, next) => {
+  if (!dbConnected) {
+    return res.status(503).json({
+      success: false,
+      message: 'Database not connected. Please try again later.',
+      code: 'DB_DISCONNECTED'
+    });
+  }
   next();
 });
 
@@ -168,6 +200,7 @@ app.use('/api/seo-admin', adminSEORoutes);
 app.use('/api/fleets', fleetRoutes);
 app.use('/api/geo', geoRoutes);
 app.use('/api/aeo', aeoRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // ============================================
 // Health Check Route
@@ -176,54 +209,42 @@ app.get('/', (req, res) => {
   res.json({
     message: 'E-commerce backend running',
     environment: process.env.NODE_ENV || 'development',
-    r2Enabled: !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID)
+    r2Enabled: !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID),
+    analyticsEnabled: process.env.UMAMI_ENABLED === 'true'
   });
 });
 
 // ============================================
-// Database Connection
-// ============================================
-const MONGO_URI = process.env.MONGO_URI;
-
-// Set global JWT_SECRET
-global.JWT_SECRET = process.env.JWT_SECRET;
-
-// Validate MongoDB URI
-if (!MONGO_URI) {
-  console.error('❌ MONGO_URI is missing');
-  process.exit(1);
-}
-
-if (!/^mongodb(\+srv)?:\/\//.test(MONGO_URI)) {
-  console.error('❌ Invalid MONGO_URI format');
-  console.error('Received:', MONGO_URI);
-  process.exit(1);
-}
-
-// Validate R2 Configuration (warn but don't exit)
-if (!process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID || 
-    !process.env.R2_SECRET_ACCESS_KEY || !process.env.R2_BUCKET_NAME) {
-  console.warn('⚠️  R2 configuration is incomplete. Images will be saved locally.');
-  console.warn('   To enable R2, add these variables to your .env file:');
-  console.warn('   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME');
-} else {
-  console.log('✅ Cloudflare R2 configured successfully');
-  console.log(`   Bucket: ${process.env.R2_BUCKET_NAME}`);
-  console.log(`   Public URL: ${process.env.R2_PUBLIC_URL || 'https://<bucket>.r2.cloudflarestorage.com'}`);
-}
-
 // Database initialization function
+// ============================================
 export const initDB = async () => {
   try {
     if (mongoose.connection.readyState === 1) {
+      dbConnected = true;
       return mongoose;
     }
 
-    await mongoose.connect(MONGO_URI);
+    await mongoose.connect(MONGO_URI, {
+      serverSelectionTimeoutMS: 8000,
+      socketTimeoutMS: 45000,
+      connectTimeoutMS: 8000
+    });
 
+    dbConnected = true;
     console.log('✅ MongoDB connected successfully');
+
+    mongoose.connection.on('disconnected', () => {
+      console.warn('⚠️ MongoDB disconnected');
+      dbConnected = false;
+    });
+    mongoose.connection.on('reconnected', () => {
+      console.log('✅ MongoDB reconnected');
+      dbConnected = true;
+    });
+
     return mongoose;
   } catch (error) {
+    dbConnected = false;
     console.error('❌ MongoDB connection error:', error);
     process.exit(1);
   }
@@ -233,8 +254,11 @@ export const initDB = async () => {
 // Cron Job Function
 // ============================================
 const startCronJob = () => {
-  // Run the cron job every minute to check for scheduled blogs
   cron.schedule('0 * * * *', async () => {
+    if (!dbConnected) {
+      return;
+    }
+
     try {
       await checkScheduledBlogs();
     } catch (error) {
@@ -242,15 +266,17 @@ const startCronJob = () => {
     }
   });
 
-  console.log('⏰ Scheduled blog publisher cron job started (runs every minute)');
+  console.log('⏰ Scheduled blog publisher cron job started (runs every hour)');
 
-  // Run initial check immediately after database connection
   setTimeout(async () => {
+    if (!dbConnected) {
+      return;
+    }
+
     try {
-      console.log('🔄 Running initial scheduled blog check...');
       await checkScheduledBlogs();
     } catch (error) {
-      console.error('❌ Initial scheduled blog check error:', error);
+      console.error('Initial scheduled blog check error:', error);
     }
   }, 2000);
 };
@@ -263,22 +289,11 @@ const PORT = process.env.PORT || 5005;
 const startServer = async () => {
   try {
     await initDB();
-    
-    // ✅ START THE CRON JOB HERE
     startCronJob();
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🌐 CORS enabled for: ${allowedOrigins.join(', ')}`);
-      
-      // Log R2 status
-      if (process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID) {
-        console.log(`📦 R2 Storage: Enabled`);
-        console.log(`   Bucket: ${process.env.R2_BUCKET_NAME}`);
-      } else {
-        console.log(`📁 Local Storage: Enabled (uploads folder)`);
-      }
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
@@ -290,24 +305,22 @@ const startServer = async () => {
 startServer();
 
 // ============================================
-// Error Handling Middleware (Optional)
+// Error Handling Middleware
 // ============================================
 app.use((err, req, res, next) => {
   console.error('❌ Server Error:', err.stack);
-  
-  // Multer errors
+
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({
       success: false,
       message: 'File too large. Maximum size is 5MB.'
     });
   }
-  
-  // Other errors
+
   res.status(500).json({
     success: false,
-    message: process.env.NODE_ENV === 'development' 
-      ? err.message 
+    message: process.env.NODE_ENV === 'development'
+      ? err.message
       : 'Internal server error'
   });
 });

@@ -31,6 +31,8 @@ const r2Client = isR2Configured ? new S3Client({
     accessKeyId: R2_ACCESS_KEY_ID,
     secretAccessKey: R2_SECRET_ACCESS_KEY,
   },
+  // ✅ FAIL FAST: Limit AWS SDK internal retries to a single attempt
+  maxAttempts: 1,
 }) : null;
 
 // ============================================

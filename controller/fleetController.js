@@ -350,28 +350,11 @@ export const aiGenerateFleetImage = async (req, res) => {
 
   } catch (error) {
     console.error('Fleet image generation error:', error);
-    
-    try {
-      const { type } = req.body;
-      console.log('🔄 Attempting fallback generation with turbo model...');
-      
-      const fallbackImage = await generateFleetImage(type, '', 'turbo', 'featured');
-      
-      return res.json({
-        success: true,
-        data: {
-          ...fallbackImage,
-          note: 'Generated with fallback model (turbo)'
-        }
-      });
-    } catch (fallbackError) {
-      console.error('Fallback generation also failed:', fallbackError);
-      
-      res.status(500).json({
-        success: false,
-        message: 'Failed to generate image: ' + error.message
-      });
-    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate image: ' + error.message
+    });
   }
 };
 

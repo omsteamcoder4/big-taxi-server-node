@@ -1,5 +1,6 @@
 // middleware/authMiddleware.js
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import User from '../models/userModel.js';
 
 export const protect = async (req, res, next) => {
@@ -27,8 +28,27 @@ export const protect = async (req, res, next) => {
       });
     }
 
+    // ✅ FAIL FAST: If DB is down, return 503 immediately without retry
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database unavailable. Please try again later.',
+        code: 'DB_DISCONNECTED'
+      });
+    }
+
     // ✅ FIX: Fetch full user from DB so req.user always has .role, ._id, etc.
-    const user = await User.findById(decoded.id).select('-password');
+    let user;
+    try {
+      user = await User.findById(decoded.id).select('-password');
+    } catch (dbErr) {
+      console.error('❌ DB error in auth:', dbErr.message);
+      return res.status(503).json({
+        success: false,
+        message: 'Database unavailable. Please try again later.',
+        code: 'DB_DISCONNECTED'
+      });
+    }
 
     if (!user) {
       return res.status(401).json({

@@ -2,7 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import sharp from 'sharp';
-import crypto from 'crypto'; // ✅ ADD THIS
+import crypto from 'crypto';
 
 // ✅ Ensure uploads folder exists
 const uploadDir = 'uploads/';
@@ -56,7 +56,7 @@ const safeDelete = (filePath) => {
   }
 };
 
-// ✅ EXTREME OPTIMIZATION: For 8-10KB file sizes
+// ✅ EXTREME OPTIMIZATION: Single pass, fail-fast
 export const extremeOptimization = async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) return next();
@@ -80,10 +80,9 @@ export const extremeOptimization = async (req, res, next) => {
         console.log(`   Size: ${(originalSize / 1024).toFixed(2)}KB`);
         console.log(`   Dimensions: ${originalWidth}x${originalHeight}`);
 
-        // EXTREME RESIZING for tiny file sizes
+        // Calculate target dimensions based on original
         let targetWidth, targetHeight;
         
-        // Calculate target dimensions based on original
         if (originalWidth > originalHeight) {
           // Landscape image - max width 400px
           targetWidth = Math.min(400, originalWidth);
@@ -100,20 +99,20 @@ export const extremeOptimization = async (req, res, next) => {
         
         console.log(`   ↘️ Resizing to: ${targetWidth}x${targetHeight}`);
 
-        // Convert to WebP with EXTREME compression
+        // Convert to WebP with compression - single pass
         await sharp(originalPath)
           .resize(targetWidth, targetHeight, {
             fit: 'inside',
             withoutEnlargement: true,
-            kernel: sharp.kernel.nearest // Fastest, less quality
+            kernel: sharp.kernel.nearest
           })
           .webp({ 
-            quality: 40, // VERY LOW QUALITY
-            effort: 6, // Maximum compression
-            nearLossless: false, // Disable for smaller size
-            smartSubsample: false, // Disable for smaller size
-            alphaQuality: 50, // Lower alpha quality
-            lossless: false // Disable lossless mode
+            quality: 40,
+            effort: 6,
+            nearLossless: false,
+            smartSubsample: false,
+            alphaQuality: 50,
+            lossless: false
           })
           .toFile(outputPath);
 
@@ -124,34 +123,6 @@ export const extremeOptimization = async (req, res, next) => {
         console.log(`✅ EXTREMELY Optimized: ${newFilename}`);
         console.log(`   New Size: ${(optimizedStats.size / 1024).toFixed(2)}KB`);
         console.log(`   Savings: ${savings}% reduction`);
-        
-        // If still too big, try even more aggressive settings
-        if (optimizedStats.size > 15 * 1024) { // > 15KB
-          console.log(`   ⚡ File still >15KB, applying ultra-compression...`);
-          
-          // Delete the first optimization
-          safeDelete(outputPath);
-          
-          // Even smaller dimensions
-          const ultraWidth = Math.max(150, Math.round(targetWidth * 0.7));
-          const ultraHeight = Math.max(150, Math.round(targetHeight * 0.7));
-          
-          await sharp(originalPath)
-            .resize(ultraWidth, ultraHeight, {
-              fit: 'inside',
-              withoutEnlargement: true
-            })
-            .webp({ 
-              quality: 25, // Extremely low quality
-              effort: 6,
-              nearLossless: false,
-              smartSubsample: false
-            })
-            .toFile(outputPath);
-          
-          const ultraStats = fs.statSync(outputPath);
-          console.log(`   ⚡ Ultra-compressed: ${(ultraStats.size / 1024).toFixed(2)}KB`);
-        }
 
         // Delete original file
         safeDelete(originalPath);
@@ -202,7 +173,7 @@ export const extremeOptimization = async (req, res, next) => {
   }
 };
 
-// ✅ ULTRA TINY OPTIMIZATION: Guaranteed < 10KB (for thumbnails)
+// ✅ ULTRA TINY OPTIMIZATION: Single pass, fail-fast
 export const ultraTinyOptimization = async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) return next();
@@ -220,51 +191,27 @@ export const ultraTinyOptimization = async (req, res, next) => {
         
         console.log(`🔄 Processing: ${file.filename} (${(metadata.size / 1024).toFixed(2)}KB)`);
 
-        // ULTRA TINY settings
-        const MAX_DIMENSION = 200; // Max width or height
+        // ULTRA TINY settings - single pass
+        const MAX_DIMENSION = 200;
+        const currentQuality = 40;
         
-        let attempts = 0;
-        let currentQuality = 40;
-        let finalSize = 0;
+        await sharp(originalPath)
+          .resize(MAX_DIMENSION, MAX_DIMENSION, {
+            fit: 'inside',
+            withoutEnlargement: true
+          })
+          .webp({
+            quality: currentQuality,
+            effort: 6,
+            nearLossless: false,
+            smartSubsample: false
+          })
+          .toFile(outputPath);
         
-        do {
-          attempts++;
-          console.log(`   Attempt ${attempts}: Quality ${currentQuality}%`);
-          
-          await sharp(originalPath)
-            .resize(MAX_DIMENSION, MAX_DIMENSION, {
-              fit: 'inside',
-              withoutEnlargement: true
-            })
-            .webp({
-              quality: currentQuality,
-              effort: 6,
-              nearLossless: false,
-              smartSubsample: false
-            })
-            .toFile(outputPath);
-          
-          const stats = fs.statSync(outputPath);
-          finalSize = stats.size;
-          
-          console.log(`   → Size: ${(finalSize / 1024).toFixed(2)}KB`);
-          
-          // Reduce quality for next attempt if still too large
-          if (finalSize > 10 * 1024 && currentQuality > 20) {
-            currentQuality -= 5;
-          }
-          
-          // If still too large after quality reduction, reduce dimensions
-          if (finalSize > 10 * 1024 && currentQuality <= 20) {
-            await sharp(originalPath)
-              .resize(150, 150, { fit: 'inside' })
-              .webp({ quality: 20, effort: 6 })
-              .toFile(outputPath);
-            finalSize = fs.statSync(outputPath).size;
-            console.log(`   → Reduced to 150x150: ${(finalSize / 1024).toFixed(2)}KB`);
-          }
-          
-        } while (finalSize > 10 * 1024 && attempts < 3); // Max 3 attempts
+        const stats = fs.statSync(outputPath);
+        const finalSize = stats.size;
+        
+        console.log(`   → Size: ${(finalSize / 1024).toFixed(2)}KB`);
         
         safeDelete(originalPath);
         
@@ -292,7 +239,7 @@ export const ultraTinyOptimization = async (req, res, next) => {
   }
 };
 
-// ✅ SMART OPTIMIZATION: Balances size and quality, targets specific size ranges
+// ✅ SMART OPTIMIZATION: Single pass, fail-fast
 export const smartSizeOptimization = (targetMaxKB = 10) => {
   return async (req, res, next) => {
     try {
@@ -327,25 +274,14 @@ export const smartSizeOptimization = (targetMaxKB = 10) => {
             height = Math.min(350, metadata.height);
           }
 
-          // Initial optimization
+          // Single pass optimization
           await sharp(originalPath)
             .resize(width, height, { fit: 'inside' })
             .webp({ quality, effort: 6 })
             .toFile(outputPath);
 
-          let finalSize = fs.statSync(outputPath).size;
-          let finalSizeKB = finalSize / 1024;
-          
-          // Reduce until target is met
-          while (finalSizeKB > targetMaxKB && quality > 20) {
-            quality -= 5;
-            await sharp(originalPath)
-              .resize(Math.max(100, width - 50), Math.max(100, height - 50), { fit: 'inside' })
-              .webp({ quality, effort: 6 })
-              .toFile(outputPath);
-            finalSize = fs.statSync(outputPath).size;
-            finalSizeKB = finalSize / 1024;
-          }
+          const finalSize = fs.statSync(outputPath).size;
+          const finalSizeKB = finalSize / 1024;
 
           safeDelete(originalPath);
           

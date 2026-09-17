@@ -144,7 +144,7 @@ const deleteLocalImage = (imagePath) => {
 };
 
 /**
- * Optimize image to WebP under 40KB and upload to R2
+ * Optimize image to WebP and upload to R2 - single pass, fail-fast
  */
 const processAndUploadToR2 = async (fileBuffer, oldImagePath = null, folder = 'blogs') => {
   try {
@@ -157,23 +157,12 @@ const processAndUploadToR2 = async (fileBuffer, oldImagePath = null, folder = 'b
     console.log(`🖼️ Processing blog image for R2 upload`);
     console.log(`📏 Original buffer size: ${(fileBuffer.length / 1024).toFixed(2)}KB`);
 
-    // Optimize to WebP - blog featured image (1200x675)
-    let quality = 80;
-    let buffer = await sharp(fileBuffer)
+    // Optimize to WebP - blog featured image (1200x675) - single pass
+    const quality = 75;
+    const buffer = await sharp(fileBuffer)
       .resize(1200, 675, { fit: 'cover', withoutEnlargement: true })
       .webp({ quality, effort: 6 })
       .toBuffer();
-
-    let attempts = 0;
-    while (buffer.length / 1024 > 40 && quality > 20 && attempts < 5) {
-      quality -= 10;
-      buffer = await sharp(fileBuffer)
-        .resize(1200, 675, { fit: 'cover', withoutEnlargement: true })
-        .webp({ quality, effort: 6 })
-        .toBuffer();
-      attempts++;
-      console.log(`🔄 Attempt ${attempts}: Quality ${quality}%, Size: ${(buffer.length / 1024).toFixed(2)}KB`);
-    }
 
     const finalSize = (buffer.length / 1024).toFixed(1);
     console.log(`✅ Image optimized: ${finalSize}KB, quality: ${quality}`);
@@ -195,7 +184,7 @@ const processAndUploadToR2 = async (fileBuffer, oldImagePath = null, folder = 'b
 };
 
 /**
- * Process OG image separately (1200x630 for social sharing)
+ * Process OG image separately (1200x630 for social sharing) - single pass, fail-fast
  */
 const processOGImageToR2 = async (fileBuffer, oldImagePath = null, folder = 'blogs/og') => {
   try {
@@ -208,23 +197,12 @@ const processOGImageToR2 = async (fileBuffer, oldImagePath = null, folder = 'blo
     console.log(`🖼️ Processing OG image for R2 upload`);
     console.log(`📏 Original buffer size: ${(fileBuffer.length / 1024).toFixed(2)}KB`);
 
-    // Optimize to WebP - OG image (1200x630)
-    let quality = 80;
-    let buffer = await sharp(fileBuffer)
+    // Optimize to WebP - OG image (1200x630) - single pass
+    const quality = 75;
+    const buffer = await sharp(fileBuffer)
       .resize(1200, 630, { fit: 'cover', withoutEnlargement: true })
       .webp({ quality, effort: 6 })
       .toBuffer();
-
-    let attempts = 0;
-    while (buffer.length / 1024 > 40 && quality > 20 && attempts < 5) {
-      quality -= 10;
-      buffer = await sharp(fileBuffer)
-        .resize(1200, 630, { fit: 'cover', withoutEnlargement: true })
-        .webp({ quality, effort: 6 })
-        .toBuffer();
-      attempts++;
-      console.log(`🔄 Attempt ${attempts}: Quality ${quality}%, Size: ${(buffer.length / 1024).toFixed(2)}KB`);
-    }
 
     const finalSize = (buffer.length / 1024).toFixed(1);
     console.log(`✅ OG image optimized: ${finalSize}KB, quality: ${quality}`);
@@ -408,6 +386,7 @@ const reviseContentWithInstruction = async (content, instruction) => {
 // Generates an outline via generateOutline() and then fills in up to 2
 // suggested in-content images. Shared by the "Generate Outline with AI"
 // button and the AI chat box (when the chat is used to draft a fresh post).
+// Fail-fast: sequential generation, no silent partial failures.
 const generateOutlineWithImages = async (topic, category) => {
   const outline = await generateOutline(topic, category);
 
@@ -417,22 +396,18 @@ const generateOutlineWithImages = async (topic, category) => {
     .slice(0, 2);
 
   if (imageSections.length > 0) {
-    const results = await Promise.allSettled(
-      imageSections.map(({ section }) =>
-        generateBlogImage(section.image.suggestion, '', 'flux', 'featured')
-      )
-    );
-
-    results.forEach((result, i) => {
-      const { index } = imageSections[i];
-      if (result.status === 'fulfilled') {
+    for (const { section, index } of imageSections) {
+      try {
+        const result = await generateBlogImage(
+          section.image.suggestion, '', 'flux', 'featured'
+        );
         outline.sections[index].image.dataUrl =
-          `data:${result.value.mimeType};base64,${result.value.data}`;
-      } else {
-        console.error('In-content image generation failed for section', index, result.reason);
+          `data:${result.mimeType};base64,${result.data}`;
+      } catch (err) {
+        console.error('In-content image generation failed for section', index, err);
         delete outline.sections[index].image;
       }
-    });
+    }
   }
 
   return outline;
@@ -773,27 +748,10 @@ export const aiGenerateImage = async (req, res) => {
   } catch (error) {
     console.error('Image generation error:', error);
     
-    try {
-      const { title } = req.body;
-      console.log('🔄 Attempting fallback generation with turbo model...');
-      
-      const fallbackImage = await generateBlogImage(title, '', 'turbo', 'featured');
-      
-      return res.json({
-        success: true,
-        data: {
-          ...fallbackImage,
-          note: 'Generated with fallback model (turbo)'
-        }
-      });
-    } catch (fallbackError) {
-      console.error('Fallback generation also failed:', fallbackError);
-      
-      res.status(500).json({
-        success: false,
-        message: 'Failed to generate image: ' + error.message
-      });
-    }
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate image: ' + error.message
+    });
   }
 };
 
@@ -818,27 +776,10 @@ export const aiGenerateOGImage = async (req, res) => {
   } catch (error) {
     console.error('OG Image generation error:', error);
     
-    try {
-      const { title } = req.body;
-      console.log('🔄 Attempting OG fallback generation with turbo model...');
-      
-      const fallbackImage = await generateBlogImage(title, '', 'turbo', 'og');
-      
-      return res.json({
-        success: true,
-        data: {
-          ...fallbackImage,
-          note: 'Generated with fallback model (turbo)'
-        }
-      });
-    } catch (fallbackError) {
-      console.error('OG fallback generation also failed:', fallbackError);
-      
-      res.status(500).json({
-        success: false,
-        message: 'Failed to generate OG image: ' + error.message
-      });
-    }
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate OG image: ' + error.message
+    });
   }
 };
 
@@ -853,10 +794,8 @@ export const aiGenerateAllImages = async (req, res) => {
       });
     }
 
-    const [featuredImage, ogImage] = await Promise.all([
-      generateBlogImage(title, description, model, 'featured'),
-      generateBlogImage(title, description, model, 'og')
-    ]);
+    const featuredImage = await generateBlogImage(title, description, model, 'featured');
+    const ogImage = await generateBlogImage(title, description, model, 'og');
 
     res.json({
       success: true,
@@ -869,24 +808,10 @@ export const aiGenerateAllImages = async (req, res) => {
   } catch (error) {
     console.error('All images generation error:', error);
     
-    try {
-      const { title, description } = req.body;
-      const featuredImage = await generateBlogImage(title, description, 'flux', 'featured');
-      
-      return res.json({
-        success: true,
-        data: {
-          featured: featuredImage,
-          og: null,
-          note: 'OG image generation failed, but featured image was created'
-        }
-      });
-    } catch (fallbackError) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to generate images: ' + error.message
-      });
-    }
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate images: ' + error.message
+    });
   }
 };
 
