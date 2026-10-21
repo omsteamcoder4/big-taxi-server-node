@@ -15,7 +15,7 @@ const __dirname = path.dirname(__filename);
 // @google/generative-ai was fully deprecated/end-of-lifed by Google on Nov 30, 2025.
 // Migrated to the current unified SDK: @google/genai
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const GEMINI_MODEL = "gemini-3.5-flash-lite";
+const GEMINI_MODEL = process.env.GEMINI_MODEL;
 
 // ============ UTILITY FUNCTIONS ============
 
@@ -120,13 +120,13 @@ const processAndSaveOgImage = async (fileBuffer, oldImagePath = null) => {
 // ============ POLLINATIONS.AI IMAGE GENERATION ============
 
 const AVAILABLE_MODELS = {
-  flux: 'flux',
-  turbo: 'turbo',
-  gptimage: 'gptimage',
-  qwen: 'qwen-image',
-  grok: 'grok-imagine',
-  zimage: 'zimage',
-  ideogram: 'ideogram-v4-turbo'
+  flux: process.env.POLLINATIONS_MODEL_FLUX,
+  turbo: process.env.POLLINATIONS_MODEL_TURBO,
+  gptimage: process.env.POLLINATIONS_MODEL_GPTIMAGE,
+  qwen: process.env.POLLINATIONS_MODEL_QWEN,
+  grok: process.env.POLLINATIONS_MODEL_GROK,
+  zimage: process.env.POLLINATIONS_MODEL_ZIMAGE,
+  ideogram: process.env.POLLINATIONS_MODEL_IDEOGRAM
 };
 
 const generateOGImageWithPollination = async (pageType, businessName, model = 'flux') => {
@@ -150,7 +150,7 @@ const generateOGImageWithPollination = async (pageType, businessName, model = 'f
     const width = 1200;
     const height = 630;
     
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&model=${selectedModel}&nologo=true&enhance=true`;
+    const imageUrl = `${process.env.POLLINATIONS_BASE_URL}/${encodedPrompt}?width=${width}&height=${height}&model=${selectedModel}`;
 
     console.log(`🎨 Generating OG image with Pollinations.ai (model: ${selectedModel})`);
     console.log(`📝 Prompt: ${promptText.substring(0, 100)}...`);
@@ -158,7 +158,7 @@ const generateOGImageWithPollination = async (pageType, businessName, model = 'f
 
     const imageResponse = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
-      timeout: 45000
+      timeout: 120000
     });
 
     const contentType = imageResponse.headers['content-type'] || 'image/jpeg';

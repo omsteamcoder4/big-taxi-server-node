@@ -16,7 +16,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // JSON-mode model - SAME AS BLOG CONTROLLER
 const modelJson = genAI.getGenerativeModel({
-  model: "gemini-3.6-flash",
+  model: process.env.GEMINI_MODEL,
   generationConfig: {
     maxOutputTokens: 8192,
     responseMimeType: "application/json",
@@ -25,7 +25,7 @@ const modelJson = genAI.getGenerativeModel({
 
 // Plain-text model
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-3.6-flash",
+  model: process.env.GEMINI_MODEL,
   generationConfig: {
     maxOutputTokens: 4096,
   }
@@ -217,7 +217,7 @@ const generateFleetImage = async (type, description, model = 'flux', aspectRatio
     const promptText = description ? `${type} vehicle: ${description}` : type;
     const encodedPrompt = encodeURIComponent(promptText);
     
-    const selectedModel = 'flux';
+    const selectedModel = process.env.POLLINATIONS_MODEL_FLUX;
     
     let width, height;
     if (aspectRatio === 'square') {
@@ -228,7 +228,7 @@ const generateFleetImage = async (type, description, model = 'flux', aspectRatio
       height = 675;
     }
     
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&model=${selectedModel}&nologo=true&enhance=true`;
+    const imageUrl = `${process.env.POLLINATIONS_BASE_URL}/${encodedPrompt}?width=${width}&height=${height}&model=${selectedModel}`;
 
     console.log(`🎨 Generating fleet image with Pollinations.ai (model: ${selectedModel})`);
     console.log(`📝 Prompt: ${promptText.substring(0, 100)}...`);
@@ -236,7 +236,7 @@ const generateFleetImage = async (type, description, model = 'flux', aspectRatio
 
     const imageResponse = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
-      timeout: 45000
+      timeout: 120000
     });
 
     const base64Data = Buffer.from(imageResponse.data, 'binary').toString('base64');

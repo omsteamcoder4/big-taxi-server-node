@@ -16,7 +16,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Plain-text model
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-3.6-flash",
+  model: process.env.GEMINI_MODEL,
   generationConfig: {
     maxOutputTokens: 4096,
   }
@@ -24,7 +24,7 @@ const model = genAI.getGenerativeModel({
 
 // JSON-mode model
 const modelJson = genAI.getGenerativeModel({
-  model: "gemini-3.6-flash",
+  model: process.env.GEMINI_MODEL,
   generationConfig: {
     maxOutputTokens: 8192,
     responseMimeType: "application/json",
@@ -500,13 +500,13 @@ const generateOutline = async (topic, category) => {
 // ============ POLLINATIONS.AI IMAGE GENERATION ============
 
 const AVAILABLE_MODELS = {
-  flux: 'flux',
-  turbo: 'turbo',
-  gptimage: 'gptimage',
-  qwen: 'qwen-image',
-  grok: 'grok-imagine',
-  zimage: 'zimage',
-  ideogram: 'ideogram-v4-turbo'
+  flux: process.env.POLLINATIONS_MODEL_FLUX,
+  turbo: process.env.POLLINATIONS_MODEL_TURBO,
+  gptimage: process.env.POLLINATIONS_MODEL_GPTIMAGE,
+  qwen: process.env.POLLINATIONS_MODEL_QWEN,
+  grok: process.env.POLLINATIONS_MODEL_GROK,
+  zimage: process.env.POLLINATIONS_MODEL_ZIMAGE,
+  ideogram: process.env.POLLINATIONS_MODEL_IDEOGRAM
 };
 
 const generateBlogImage = async (title, description, model = 'flux', aspectRatio = 'featured') => {
@@ -525,7 +525,7 @@ const generateBlogImage = async (title, description, model = 'flux', aspectRatio
       height = 675;
     }
     
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&model=${selectedModel}&nologo=true&enhance=true`;
+    const imageUrl = `${process.env.POLLINATIONS_BASE_URL}/${encodedPrompt}?width=${width}&height=${height}&model=${selectedModel}`;
 
     console.log(`🎨 Generating ${aspectRatio} image with Pollinations.ai (model: ${selectedModel})`);
     console.log(`📝 Prompt: ${promptText.substring(0, 100)}...`);
@@ -533,7 +533,7 @@ const generateBlogImage = async (title, description, model = 'flux', aspectRatio
 
     const imageResponse = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
-      timeout: 45000
+      timeout: 120000
     });
 
     const base64Data = Buffer.from(imageResponse.data, 'binary').toString('base64');

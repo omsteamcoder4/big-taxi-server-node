@@ -1,11 +1,13 @@
 // app.js - Complete with R2 Integration
+// IMPORTANT: this must stay the FIRST import so .env is loaded
+// before any controller creates its Gemini client.
+import 'dotenv/config';
 import express from 'express';
 import mongoose from 'mongoose';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
 
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
@@ -35,10 +37,7 @@ import { checkScheduledBlogs } from './cron/checkScheduledBlogs.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables
-dotenv.config({
-  path: path.join(__dirname, '.env')
-});
+// Environment variables are loaded by 'dotenv/config' (first import)
 
 const app = express();
 
@@ -156,6 +155,13 @@ if (process.env.UMAMI_ENABLED === 'true') {
   if (!process.env.UMAMI_HOST || !process.env.UMAMI_WEBSITE_ID) {
     console.warn('⚠️  Umami Analytics is ENABLED but config is incomplete.');
   }
+}
+
+// Validate Gemini AI configuration (warn only)
+if (!process.env.GEMINI_API_KEY || !process.env.GEMINI_MODEL) {
+  console.warn('⚠️  GEMINI_API_KEY or GEMINI_MODEL is missing. AI generation will fail.');
+} else {
+  console.log(`✅ Gemini configured (model: ${process.env.GEMINI_MODEL})`);
 }
 
 // Track DB connection state
